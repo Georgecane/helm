@@ -1,54 +1,58 @@
 # Helm
 
-Helm is an experimental lossless data-compression system focused on exact reconstruction, computational structure discovery, and adaptive optimization.
+Helm is an experimental lossless compression system focused on exact reconstruction, computational structure discovery, and adaptive optimization.
 
-**Status:** early prototype. The current implementation is a versioned container using Zstandard as a baseline codec. It does not yet implement SMDR, Gaia, Multivariable Mean, streaming, or adaptive candidate selection, and no extreme-compression ratio is claimed.
+**Status:** early prototype. The current codec is Helm's own native LZ77 token engine. It does not use Zstandard or another third-party compression codec. SMDR, Gaia, Multivariable Mean, manifold atlases, streaming, and adaptive candidate selection remain planned work. No extreme compression ratio is claimed.
 
-## Build
+## Build and test
 
-Requires a stable Rust toolchain and a C toolchain supported by the zstd crate.
+Requires a stable Rust toolchain.
 
     cargo build --release
+    cargo fmt --all -- --check
+    cargo clippy --all-targets --all-features -- -D warnings
     cargo test --all-targets
 
 ## CLI
 
-    # Compress a file into a Helm container
     cargo run --release -- pack input.bin output.helm
-
-    # Restore the original bytes exactly
     cargo run --release -- unpack output.helm restored.bin
-
-    # Inspect the container header
     cargo run --release -- inspect output.helm
 
 Existing output files are not overwritten unless --force is passed to pack or unpack.
 
-## Container v1
+## Native codec v1
 
-The fixed 48-byte header is little-endian and consists of:
+The 48-byte little-endian header contains:
 
 | Offset | Length | Meaning |
 | ---: | ---: | --- |
 | 0 | 4 | Magic bytes HELM |
 | 4 | 1 | Format version (1) |
-| 5 | 1 | Codec ID (1 = Zstandard) |
+| 5 | 1 | Codec ID (1 = Helm LZ77 v1) |
 | 6 | 2 | Reserved flags (must be zero) |
 | 8 | 8 | Original byte length |
 | 16 | 32 | BLAKE3 checksum of original bytes |
 
-The header is followed by the Zstandard payload. Decoding validates the header, enforces a default 1 GiB output limit, checks the decoded length, and verifies the checksum. Library users can set a different limit with unpack_with_limit.
+The payload is a Helm-owned token stream:
 
-## Planned discovery architecture
+- Literal token: tag 0, a 16-bit little-endian length, then literal bytes.
+- Match token: tag 1, a 16-bit little-endian backward distance, then a 16-bit little-endian match length.
+
+The current greedy matcher uses a 3-byte key and retains the most recent position for each key. Matches are limited to a 65,535-byte backward window. The decoder validates token boundaries, distances, output length, and checksum, and enforces a default 1 GiB output limit.
+
+This is a deliberately small first native engine, not the final compression architecture. The current format is experimental and may change before stable releases.
+
+## Planned structure-discovery architecture
 
 The intended adaptive search has four rounds:
 
-1. **SMDR** and **Gaia** independently propose candidate structures.
-2. **Multivariable Mean** analyzes the original data and discovered structures, then proposes new candidates.
-3. Helm evaluates candidates using exact reconstruction, encoded size, compute cost, and speed; weak candidates may be pruned.
-4. The winning path is selected only after all rounds, and its representation must reconstruct the source exactly.
+1. SMDR and Gaia independently propose candidate structures.
+2. Multivariable Mean analyzes the original data and discovered structures, then proposes new candidates.
+3. Helm evaluates candidate representations using exact reconstruction, encoded size, compute cost, and speed; weak candidates may be pruned.
+4. The best verified representation is selected only after the rounds, and must reconstruct the source exactly.
 
-These are design goals, not implemented capabilities. A candidate must never be accepted solely because it is smaller: exact reconstruction is mandatory.
+These components are design goals, not yet implemented. A candidate must never be accepted solely because it is smaller: exact reconstruction is mandatory.
 
 ## License
 
