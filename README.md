@@ -21,14 +21,16 @@ Requires a stable Rust toolchain.
 
 Existing output files are not overwritten unless --force is passed to pack or unpack.
 
-## Native codec v1
+## Native container format v2
+
+The version was incremented when the payload changed from the original prototype's Zstandard stream to Helm's native codec, so old prototype files are not silently misread.
 
 The 48-byte little-endian header contains:
 
 | Offset | Length | Meaning |
 | ---: | ---: | --- |
 | 0 | 4 | Magic bytes HELM |
-| 4 | 1 | Format version (1) |
+| 4 | 1 | Format version (2) |
 | 5 | 1 | Codec ID (1 = Helm LZ77 v1) |
 | 6 | 2 | Reserved flags (must be zero) |
 | 8 | 8 | Original byte length |

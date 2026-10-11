@@ -1,12 +1,12 @@
 //! Helm's native lossless container and codec.
 //!
-//! Version 1 uses Helm's own greedy LZ77 match finder and token stream. No
+//! Format v2 uses Helm's own greedy LZ77 match finder and token stream. No
 //! third-party compression codec is used. The format is experimental.
 
 mod codec;
 use std::fmt;
 const MAGIC: &[u8; 4] = b"HELM";
-const VERSION: u8 = 1;
+const VERSION: u8 = 2;
 const CODEC_HELM_LZ77: u8 = 1;
 const HEADER_LEN: usize = 48;
 pub const DEFAULT_MAX_OUTPUT_BYTES: u64 = 1024 * 1024 * 1024;
@@ -46,7 +46,6 @@ impl fmt::Display for HelmError {
         }
     }
 }
-
 impl std::error::Error for HelmError {}
 impl From<std::io::Error> for HelmError {
     fn from(value: std::io::Error) -> Self { Self::Io(value) }
@@ -80,7 +79,6 @@ pub fn unpack_with_limit(container: &[u8], max_output_bytes: u64) -> Result<Vec<
     }
     Ok(decoded)
 }
-
 pub fn unpack(container: &[u8]) -> Result<Vec<u8>, HelmError> {
     unpack_with_limit(container, DEFAULT_MAX_OUTPUT_BYTES)
 }
@@ -107,7 +105,7 @@ mod tests {
     #[test] fn bad_magic_rejected() { let mut p = pack(b"hello").unwrap(); p[0] = b'X'; assert!(matches!(unpack(&p), Err(HelmError::InvalidHeader(_)))); }
     #[test] fn truncated_header_rejected() { assert!(matches!(unpack(b"HELM"), Err(HelmError::InvalidHeader(_)))); }
     #[test] fn output_limit_enforced() { let p = pack(b"123456789").unwrap(); assert!(matches!(unpack_with_limit(&p, 8), Err(HelmError::OutputLimitExceeded { declared: 9, limit: 8 }))); }
-    #[test] fn metadata_reports_native_codec() { let x = b"metadata test"; let m = inspect(&pack(x).unwrap()).unwrap(); assert_eq!(m.codec, "helm-lz77-v1"); assert_eq!(m.original_size, x.len() as u64); }
+    #[test] fn metadata_reports_native_codec() { let x = b"metadata test"; let m = inspect(&pack(x).unwrap()).unwrap(); assert_eq!(m.version, 2); assert_eq!(m.codec, "helm-lz77-v1"); assert_eq!(m.original_size, x.len() as u64); }
     #[test] fn corruption_detected() { let mut p = pack(&[b'A'; 4096]).unwrap(); let i = p.len()-1; p[i] ^= 0x40; assert!(unpack(&p).is_err()); }
     #[test] fn unknown_codec_rejected() { let mut p = pack(b"hello").unwrap(); p[5] = 99; assert!(matches!(unpack(&p), Err(HelmError::UnsupportedCodec(99)))); }
 }
