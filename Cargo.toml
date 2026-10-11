@@ -1,0 +1,15 @@
+[package]
+name = "helm"
+version = "0.1.0"
+edition = "2024"
+description = "Experimental lossless data compression with exact reconstruction"
+license = "GPL-3.0-or-later"
+readme = "README.md"
+
+[dependencies]
+blake3 = "1.8"
+zstd = "0.13"
+
+[[bin]]
+name = "helm"
+path = "src/main.rs"
