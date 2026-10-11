@@ -2,7 +2,7 @@
 
 Helm is an experimental lossless compression system focused on exact reconstruction, computational structure discovery, and adaptive optimization.
 
-**Status:** early prototype. The current codec is Helm's own native LZ77 token engine. It does not use Zstandard or another third-party compression codec. SMDR, Gaia, Multivariable Mean, manifold atlases, streaming, and adaptive candidate selection remain planned work. No extreme compression ratio is claimed.
+**Status:** early prototype. The encoder now evaluates native reversible structure candidates in four rounds before selecting a representation. It does not use Zstandard or another third-party compression codec. Gaia is currently a small adaptive byte-context predictor, not a general-purpose trained neural model. Continuous manifold atlases and generalized symbolic equation discovery remain future work. No extreme compression ratio is claimed.
 
 ## Build and test
 
@@ -36,12 +36,12 @@ The 48-byte little-endian header contains:
 | 8 | 8 | Original byte length |
 | 16 | 32 | BLAKE3 checksum of original bytes |
 
-The payload is a Helm-owned token stream:
+The payload begins with a one-byte transform identifier, followed by Helm's token stream. IDs: 0 identity; 1, 2, 3, 4 byte-stride residuals at strides 1, 2, 4, and 8; 5 adaptive Gaia context residual; 6 Multivariable Mean residual. The token stream is:
 
 - Literal token: tag 0, a 16-bit little-endian length, then literal bytes.
 - Match token: tag 1, a 16-bit little-endian backward distance, then a 16-bit little-endian match length.
 
-The current greedy matcher uses a 3-byte key and retains the most recent position for each key. Matches are limited to a 65,535-byte backward window. The decoder validates token boundaries, distances, output length, and checksum, and enforces a default 1 GiB output limit.
+The four-round candidate search runs (1) SMDR-style reversible symbolic residuals across byte strides, (2) Gaia's adaptive successor model, (3) a two-symbol Multivariable Mean predictor, and (4) encoded-cost comparison with exact reconstruction mandatory. The smallest verified token stream wins. The native token coder uses a 3-byte match key and a 65,535-byte backward window. The decoder validates token boundaries, distances, transform IDs, output length, and checksum, and enforces a default 1 GiB output limit.
 
 This is a deliberately small first native engine, not the final compression architecture. The current format is experimental and may change before stable releases.
 
@@ -54,7 +54,7 @@ The intended adaptive search has four rounds:
 3. Helm evaluates candidate representations using exact reconstruction, encoded size, compute cost, and speed; weak candidates may be pruned.
 4. The best verified representation is selected only after the rounds, and must reconstruct the source exactly.
 
-These components are design goals, not yet implemented. A candidate must never be accepted solely because it is smaller: exact reconstruction is mandatory.
+The current implementation is an executable first skeleton, not the finished mathematical architecture: SMDR currently proposes byte-stride residuals; Gaia is an adaptive context predictor rather than a full trained ML discovery engine; Multivariable Mean is a two-symbol predictor; and continuous manifold atlases plus generalized symbolic equation discovery are not implemented yet. A candidate must never be accepted solely because it is smaller: exact reconstruction is mandatory.
 
 ## License
 

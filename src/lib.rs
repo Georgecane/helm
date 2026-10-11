@@ -4,6 +4,7 @@
 //! third-party compression codec is used. The format is experimental.
 
 mod codec;
+mod discovery;
 use std::fmt;
 const MAGIC: &[u8; 4] = b"HELM";
 const VERSION: u8 = 2;

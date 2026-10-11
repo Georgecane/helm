@@ -1,7 +1,7 @@
 //! Native Helm LZ77 token codec.
 //! Tokens: 0 + u16 length + literal bytes; 1 + u16 backward distance + u16 match length.
 use std::collections::HashMap;
-use crate::HelmError;
+use crate::{discovery, HelmError};
 
 const LITERAL: u8 = 0;
 const MATCH: u8 = 1;
@@ -21,7 +21,7 @@ fn emit_literals(output: &mut Vec<u8>, input: &[u8]) {
     }
 }
 
-pub(super) fn encode(input: &[u8]) -> Vec<u8> {
+fn encode_tokens(input: &[u8]) -> Vec<u8> {
     let mut output = Vec::with_capacity(input.len());
     let mut latest: HashMap<u32, usize> = HashMap::new();
     let (mut position, mut literal_start) = (0, 0);
@@ -59,7 +59,7 @@ pub(super) fn encode(input: &[u8]) -> Vec<u8> {
     output
 }
 
-pub(super) fn decode(input: &[u8], expected_size: u64) -> Result<Vec<u8>, HelmError> {
+fn decode_tokens(input: &[u8], expected_size: u64) -> Result<Vec<u8>, HelmError> {
     let capacity = usize::try_from(expected_size).map_err(|_| HelmError::InvalidPayload("declared output size does not fit this platform"))?;
     let mut output = Vec::with_capacity(capacity.min(8 * 1024 * 1024));
     let mut cursor = 0;
@@ -96,10 +96,34 @@ pub(super) fn decode(input: &[u8], expected_size: u64) -> Result<Vec<u8>, HelmEr
     Ok(output)
 }
 
+/// Evaluate the four-round candidate set and store the winning reversible transform ID.
+pub(super) fn encode(input: &[u8]) -> Vec<u8> {
+    let mut best: Option<(usize, u8, Vec<u8>)> = None;
+    for (id, candidate) in discovery::candidates(input) {
+        let tokens = encode_tokens(&candidate);
+        let cost = tokens.len() + 1;
+        if best.as_ref().is_none_or(|(best_cost, _, _)| cost < *best_cost) {
+            best = Some((cost, id, tokens));
+        }
+    }
+    let (_, id, tokens) = best.expect("identity candidate always exists");
+    let mut output = Vec::with_capacity(tokens.len() + 1);
+    output.push(id);
+    output.extend_from_slice(&tokens);
+    output
+}
+
+pub(super) fn decode(input: &[u8], expected_size: u64) -> Result<Vec<u8>, HelmError> {
+    let (&id, tokens) = input.split_first()
+        .ok_or(HelmError::InvalidPayload("missing transform identifier"))?;
+    let transformed = decode_tokens(tokens, expected_size)?;
+    discovery::inverse(&transformed, id).map_err(HelmError::InvalidPayload)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test] fn overlapping_match_roundtrip() { let x = b"abcabcabcabcabcabc"; assert_eq!(decode(&encode(x), x.len() as u64).unwrap(), x); }
-    #[test] fn invalid_distance_rejected() { assert!(matches!(decode(&[MATCH, 1, 0, 4, 0], 4), Err(HelmError::InvalidPayload(_)))); }
-    #[test] fn truncated_literal_rejected() { assert!(matches!(decode(&[LITERAL, 5, 0, b'a'], 5), Err(HelmError::InvalidPayload(_)))); }
+    #[test] fn invalid_distance_rejected() { assert!(matches!(decode_tokens(&[MATCH, 1, 0, 4, 0], 4), Err(HelmError::InvalidPayload(_)))); }
+    #[test] fn truncated_literal_rejected() { assert!(matches!(decode_tokens(&[LITERAL, 5, 0, b'a'], 5), Err(HelmError::InvalidPayload(_)))); }
 }
